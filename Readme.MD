@@ -16,9 +16,9 @@ Here are a few examples of Axiom in action:
 
 | **Processing & Sidebar** | **Multi-Head Attention (Math & Code)** | **LoRA (Math & Code)** |
 |:---:|:---:|:---:|
-| <img src="RequiredInputDatar.png" width="300" alt="Sidebar with target parameters"/> | <img src="output1.png" width="300" alt="Multi-Head Attention formula and code"/> | <img src="output2.png" width="300" alt="Encoder Decoder Architecture"/> |
+| <img src="RequireInputData.png" width="300" alt="Sidebar with target parameters"/> | <img src="output1.png" width="300" alt="Multi-Head Attention formula and code"/> | <img src="output2.png" width="300" alt="Encoder Decoder Architecture"/> |
 
-*(Note: Please ensure your screenshot images are saved in the project folder with the corresponding filenames: `processing_sidebar.png`, `attention_math.png`, and `lora_math.png`.)*
+*(Note: Please ensure your screenshot images are saved in the project folder with the corresponding filenames: `processing_sidebar.png`, `attention_math.png`, and `encoder-decoder.png`.)*
 
 ---
 
