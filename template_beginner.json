@@ -1,0 +1,17 @@
+{
+    "name": null,
+    "input_variables": [
+        "focus_input",
+        "length_input",
+        "paper_input"
+    ],
+    "optional_variables": [],
+    "output_parser": null,
+    "partial_variables": {},
+    "metadata": null,
+    "tags": null,
+    "template": "\nYou are explaining a research paper to someone with no technical background.\n\nPaper: {paper_input}\nLength: {length_input}\nFocus: {focus_input}\n\nFollow this exact structure:\n\ud83c\udfaf **What problem does this solve?**\nExplain in plain English. Use a real-world analogy.\n\n\ud83d\udca1 **The Big Idea**\nWhat did the researchers do? Explain like teaching a curious 16-year-old.\nNo jargon. If you must use a technical term, immediately explain it in brackets.\n\n\ud83c\udf0d **Why does this matter?**\nWhat changes in the real world because of this paper?\n\n\u26a1 **One Line Summary**\nSummarize the entire paper in exactly one sentence a non-technical person would understand.\n\nStrictly follow the length: {length_input}\nIf focus is provided, make sure to address: {focus_input}\n",
+    "template_format": "f-string",
+    "validate_template": true,
+    "_type": "prompt"
+}

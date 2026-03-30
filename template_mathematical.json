@@ -1,0 +1,17 @@
+{
+    "name": null,
+    "input_variables": [
+        "focus_input",
+        "length_input",
+        "paper_input"
+    ],
+    "optional_variables": [],
+    "output_parser": null,
+    "partial_variables": {},
+    "metadata": null,
+    "tags": null,
+    "template": "\nYou are a mathematician and ML researcher explaining a paper with full mathematical rigor.\n\nPaper: {paper_input}\nLength: {length_input}\nFocus: {focus_input}\n\nFollow this exact structure:\n\ud83d\udcd0 **Problem Formulation**\nState the problem mathematically. Define all variables, spaces, and objectives formally.\n\n\u2211 **Core Mathematics**\nDerive or explain the key equations in the paper.\nCRITICAL formatting rules:\n- Standalone equations: $$ equation $$\n- Inline math: $ expression $\n- Never use \\[ or \\( brackets\nExplain each term in every equation.\n\n\ud83d\udd01 **Algorithm / Proof Sketch**\nIf there is an algorithm, write it step by step with mathematical notation.\nIf there is a theoretical result, sketch the proof or key insight.\n\n\ud83d\udcc8 **Convergence / Complexity**\nWhat are the theoretical guarantees? Time complexity? Sample complexity?\n\n\ud83d\udc8e **Mathematical Novelty**\nWhat is mathematically new here vs prior work?\n\nStrictly follow the length: {length_input}\nIf focus is provided, prioritize: {focus_input}\n",
+    "template_format": "f-string",
+    "validate_template": true,
+    "_type": "prompt"
+}

@@ -30,7 +30,12 @@ def fetch_arxiv_papers():
         for entry in root.findall("atom:entry", ns):
             title = entry.find("atom:title", ns).text.strip().replace("\n", " ")
             abstract = entry.find("atom:summary", ns).text.strip().replace("\n", " ")
-            all_papers[title] = abstract
+            raw_id = entry.find("atom:id", ns).text.strip()
+            arxiv_id = raw_id.split("/abs/")[-1].split("v")[0]
+            all_papers[title] = {
+                "abstract": abstract,
+                "arxiv_id": arxiv_id
+        }
     return all_papers
 
 def build_vector_store(papers=None):
@@ -52,10 +57,13 @@ def build_vector_store(papers=None):
                 )
 
     docs = []
-    for title, abstract in papers.items():
+    for title, data in papers.items():
         docs.append(Document(
-            page_content=abstract,
-            metadata={"title": title}
+            page_content=data["abstract"],
+            metadata={
+                "title": title,
+                "arxiv_id": data["arxiv_id"]
+            }
         ))
 
     vector_store = Chroma.from_documents(
@@ -75,9 +83,71 @@ def search_papers(query, vector_store, k=10):
     papers = {}
     for doc in results:
         title = doc.metadata["title"]
-        abstract = doc.page_content
-        papers[title] = abstract
+        papers[title] = {
+            "abstract": doc.page_content,
+            "arxiv_id": doc.metadata.get("arxiv_id", "")
+        }
     return papers
+
+def fetch_full_paper(arxiv_id):
+    import arxiv
+    import tempfile
+    import os
+    import time as t
+    from pypdf import PdfReader
+    
+    client = arxiv.Client()
+    search = arxiv.Search(id_list=[arxiv_id])
+    paper = None
+    for attempt in range(3):
+        try:
+            paper = next(client.results(search))
+            break
+        except Exception as e:
+            if "429" in str(e):
+                t.sleep(5)
+            else:
+                raise e
+
+    if paper is None:
+        raise Exception("Could not fetch paper after 3 attempts.")
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        paper.download_pdf(dirpath=tmpdir, filename="paper.pdf")
+        pdf_path = os.path.join(tmpdir, "paper.pdf")
+        reader = PdfReader(pdf_path)
+        full_text = ""
+        for page in reader.pages:
+            full_text += page.extract_text() + "\n"
+    
+    return full_text
+
+
+def build_temp_store(full_text):
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+    
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=500,
+        chunk_overlap=50,
+        separators=["\n\n", "\n", " ", ""]
+    )
+    
+    chunks = splitter.split_text(full_text)
+    
+    docs = [Document(page_content=chunk) for chunk in chunks]
+    
+    temp_store = Chroma.from_documents(
+        documents=docs,
+        embedding=embeddings
+    )
+    
+    return temp_store
+
+
+def retrieve_context(query, temp_store, k=5):
+    results = temp_store.similarity_search(query, k=k)
+    context = "\n\n".join([doc.page_content for doc in results])
+    return context
 
 st.set_page_config(page_title="AI Paper Summarizer...", layout="wide")
 
@@ -97,10 +167,15 @@ st.markdown("""
     }
     .block-container {
         padding-top: 1rem !important;
-        margin-top: -3rem !important;
+        margin-top: -1rem !important;
     }
     .stApp {
         background-color: #000000;
+    }
+    
+    html, body, [data-testid="stAppViewContainer"], 
+    [data-testid="stMain"], .main {
+    background-color: #000000 !important;
     }
 
     /* ── Sidebar ──────────────────────────────────── */
@@ -299,12 +374,22 @@ with st.sidebar:
     papers = st.session_state.papers
 
     paper_input = st.selectbox(
-        "Select Research Paper",
-        list(papers.keys()),
-        index=None,
-        placeholder="Pick from results…" if papers else "Search above first…",
-        label_visibility="collapsed",
+    "Select Research Paper",
+    list(papers.keys()),
+    index=None,
+    placeholder="Pick from results…" if papers else "Search above first…",
+    label_visibility="collapsed",
     )
+
+    if paper_input and (
+        "current_paper" not in st.session_state or 
+        st.session_state.current_paper != paper_input
+    ):
+        st.session_state.current_paper = paper_input
+        arxiv_id = papers[paper_input]["arxiv_id"]
+        with st.spinner("📄 Loading full paper..."):
+            full_text = fetch_full_paper(arxiv_id)
+            st.session_state.temp_store = build_temp_store(full_text)
 
     # ══════════════════════════════════════════════
     # Section 2 — Customize Output
@@ -355,10 +440,15 @@ if summarize_button:
             focus_val = focus_input if focus_input.strip() else "No specific focus."
 
             with st.spinner("Now analyzing... 🧠✨"):
+                context = retrieve_context(
+                    focus_val if focus_val != "No specific focus." else paper_input,
+                    st.session_state.temp_store
+                )
+
                 result = chain.invoke({
-                    "paper_input": f"{paper_input}\n\nAbstract: {papers[paper_input]}",
+                    "paper_input": f"{paper_input}\n\nRelevant Sections:\n{context}",
                     "style_input": style_input,
-                    "length_input": length_input,
+                     "length_input": length_input,
                     "focus_input": focus_val
                 })
                 
