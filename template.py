@@ -1,5 +1,6 @@
 from langchain_core.prompts import PromptTemplate
 
+
 template = PromptTemplate(
     template="""
     Please summarize the research paper titled "{paper_input}" with the following specifications:
