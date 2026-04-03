@@ -1,0 +1,8 @@
+streamlit>=1.55.0
+langchain-chroma
+langchain-ollama
+langchain-core
+langchain-text-splitters
+arxiv
+pypdf
+requests

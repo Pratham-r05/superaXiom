@@ -1,51 +1,28 @@
 
-import time
-import requests
 import streamlit as st
-import xml.etree.ElementTree as ET
 from langchain_chroma import Chroma
 from langchain_ollama import ChatOllama
 from langchain_ollama import OllamaEmbeddings
 from langchain_core.documents import Document
 from langchain_core.prompts import load_prompt
+from axiom.fetcher import fetch_arxiv_papers
 
-@st.cache_data(ttl=86400)
-def fetch_arxiv_papers():
-    all_papers = {}
-    for start in range(0, 500, 100):
-        time.sleep(3)
-        url = "https://export.arxiv.org/api/query"
-        params = {
-            "search_query": "cat:cs.AI OR cat:cs.LG OR cat:cs.CL",
-            "sortBy": "submittedDate",
-            "sortOrder": "descending",
-            "max_results": 100,
-            "start": start
-        }
-        response = requests.get(url, params=params)
-        if response.status_code != 200:
-            break
-        root = ET.fromstring(response.content)
-        ns = {"atom": "http://www.w3.org/2005/Atom"}
-        for entry in root.findall("atom:entry", ns):
-            title = entry.find("atom:title", ns).text.strip().replace("\n", " ")
-            abstract = entry.find("atom:summary", ns).text.strip().replace("\n", " ")
-            raw_id = entry.find("atom:id", ns).text.strip()
-            arxiv_id = raw_id.split("/abs/")[-1].split("v")[0]
-            all_papers[title] = {
-                "abstract": abstract,
-                "arxiv_id": arxiv_id
-        }
-    return all_papers
+# ── Model Setup ────────────────────────────────────────────
+model = ChatOllama(
+    model="gpt-oss:20b",
+    temperature=0.1
+)
+embeddings = OllamaEmbeddings(model="nomic-embed-text")
 
 def build_vector_store(papers=None):
     import os
     import json
     from datetime import datetime, timedelta
 
+    os.makedirs("./axiom_db", exist_ok=True)
     date_file = "./axiom_db/last_updated.json"
 
-    if os.path.exists("./axiom_db") and os.listdir("./axiom_db"):
+    if os.listdir("./axiom_db"):
         if os.path.exists(date_file):
             with open(date_file) as f:
                 data = json.load(f)
@@ -72,7 +49,6 @@ def build_vector_store(papers=None):
         persist_directory="./axiom_db"
     )
 
-    os.makedirs("./axiom_db", exist_ok=True)
     with open(date_file, "w") as f:
         json.dump({"date": datetime.now().isoformat()}, f)
 
@@ -99,7 +75,7 @@ def fetch_full_paper(arxiv_id):
     client = arxiv.Client()
     search = arxiv.Search(id_list=[arxiv_id])
     paper = None
-    for attempt in range(3):
+    for _ in range(3):
         try:
             paper = next(client.results(search))
             break
@@ -150,13 +126,6 @@ def retrieve_context(query, temp_store, k=5):
     return context
 
 st.set_page_config(page_title="AI Paper Summarizer...", layout="wide")
-
-# 1. Model Setup
-model = ChatOllama(
-    model = "gpt-oss:20b",
-    temperature = 0.1
-)
-embeddings = OllamaEmbeddings(model="nomic-embed-text")
 
 # 2. Updated CSS — premium dark theme with indigo accents
 st.markdown("""
@@ -431,10 +400,18 @@ st.header("Research Summary")
 if summarize_button:
     if not paper_input or not style_input or not length_input:
         st.warning("⚠️ Please select all options in the sidebar.")
+    elif "temp_store" not in st.session_state:
+        st.warning("⚠️ Paper text not loaded yet. Select a paper and wait for it to load.")
     else:
         try:
-            # Loading prompt from JSON
-            template = load_prompt("template1.json")
+            # Loading prompt from JSON based on selected style
+            template_map = {
+                "Beginner-Friendly": "template_beginner.json",
+                "Technical": "template_technical.json",
+                "Code-Oriented": "template_code.json",
+                "Mathematical": "template_mathematical.json",
+            }
+            template = load_prompt(template_map[style_input])
             chain = template | model 
             
             focus_val = focus_input if focus_input.strip() else "No specific focus."
