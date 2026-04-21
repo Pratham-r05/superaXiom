@@ -1,4 +1,26 @@
 {
     "python-envs.defaultEnvManager": "ms-python.python:conda",
-    "python-envs.defaultPackageManager": "ms-python.python:conda"
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "python.analysis.extraPaths": [
+        "src"
+    ],
+    "liveServer.settings.ignoreFiles": [
+        "**/.git/**",
+        "**/.vscode/**",
+        "**/data/**",
+        "**/axiom_db/**",
+        "**/*.db",
+        "**/*.sqlite",
+        "**/*.sqlite3",
+        "**/*.sqlite-wal",
+        "**/*.sqlite-shm",
+        "**/__pycache__/**"
+    ],
+    "files.watcherExclude": {
+        "**/data/**": true,
+        "**/axiom_db/**": true,
+        "**/*.db": true,
+        "**/*.sqlite*": true,
+        "**/__pycache__/**": true
+    }
 }
