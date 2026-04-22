@@ -91,6 +91,7 @@
 #         f"`ollama pull {model}`. Detail: {last_err}"
 #     )
 import asyncio
+import os
 import logging
 from config import get_config
 
@@ -137,12 +138,14 @@ def _embed_batch(texts: list[str], config) -> list[list[float]]:
     if provider == "openrouter":
         from openai import OpenAI
         api_key = getattr(config, "EMBED_API_KEY", "") or config.get_api_key("openrouter")
+        referer = os.getenv("OPENROUTER_HTTP_REFERER", "https://superaxiom.vercel.app")
+        title = os.getenv("OPENROUTER_APP_TITLE", "superaXiom")
         client = OpenAI(
             api_key=api_key,
             base_url="https://openrouter.ai/api/v1",
             default_headers={
-                "HTTP-Referer": "http://localhost:3000",
-                "X-Title": "Axiom",
+                "HTTP-Referer": referer,
+                "X-Title": title,
             },
         )
         response = client.embeddings.create(model=model, input=texts)

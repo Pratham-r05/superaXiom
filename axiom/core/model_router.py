@@ -1,4 +1,5 @@
 import asyncio
+import os
 import logging
 from typing import AsyncIterator, Literal
 from config import get_config, persist_provider_api_key, persist_setting
@@ -18,6 +19,11 @@ class ModelRouter:
         self._openai_client = None
         self._anthropic_client = None
         self._openrouter_client = None
+
+    def _openrouter_headers(self) -> dict:
+        referer = os.getenv("OPENROUTER_HTTP_REFERER", "https://superaxiom.vercel.app")
+        title = os.getenv("OPENROUTER_APP_TITLE", "superaXiom")
+        return {"HTTP-Referer": referer, "X-Title": title}
 
     def _reset_clients(self):
         """Invalidate cached clients when credentials change."""
@@ -129,7 +135,7 @@ class ModelRouter:
             self._openrouter_client = AsyncOpenAI(
                 api_key=self.api_key,
                 base_url="https://openrouter.ai/api/v1",
-                default_headers={"HTTP-Referer": "http://localhost:3000", "X-Title": "superaXiom"},
+                default_headers=self._openrouter_headers(),
             )
         params = dict(
             model=self.model,
@@ -158,32 +164,13 @@ class ModelRouter:
             resp = await self._openrouter_client.chat.completions.create(**params)
             yield resp.choices[0].message.content
 
-    async def _anthropic(self, prompt: str, stream: bool) -> AsyncIterator[str]:
-        if not self.api_key:
-            raise ValueError("Anthropic API key is not set. Add it in Settings.")
-        import anthropic
-        client = anthropic.AsyncAnthropic(api_key=self.api_key)
-        if stream:
-            async with client.messages.stream(
-                model=self.model, max_tokens=3000,
-                messages=[{"role": "user", "content": prompt}]
-            ) as s:
-                async for text in s.text_stream:
-                    yield text
-        else:
-            resp = await client.messages.create(
-                model=self.model, max_tokens=3000,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            yield resp.content[0].text
-
     async def _gemini(self, prompt: str, stream: bool) -> AsyncIterator[str]:
         if not self.api_key:
             raise ValueError("Gemini API key is not set. Add it in Settings.")
         import google.generativeai as genai
         genai.configure(api_key=self.api_key)
         model = genai.GenerativeModel(self.model)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         if stream:
             response = await loop.run_in_executor(
                 None, lambda: model.generate_content(prompt, stream=True)
@@ -196,42 +183,6 @@ class ModelRouter:
                 None, lambda: model.generate_content(prompt)
             )
             yield result.text
-
-    async def _openrouter(self, prompt: str, stream: bool) -> AsyncIterator[str]:
-        if not self.api_key:
-            raise ValueError("OpenRouter API key is not set. Add it in Settings.")
-        from openai import AsyncOpenAI
-        client = AsyncOpenAI(
-            api_key=self.api_key,
-            base_url="https://openrouter.ai/api/v1",
-            default_headers={"HTTP-Referer": "http://localhost:3000", "X-Title": "superaXiom"},
-        )
-        params = dict(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-            max_tokens=3000,
-            frequency_penalty=0.1,
-        )
-        if stream:
-            raw_stream = await client.chat.completions.create(**params, stream=True)
-            async for chunk in raw_stream:
-                choices = getattr(chunk, "choices", None)
-                if not choices:
-                    continue
-                choice = choices[0]
-                finish_reason = getattr(choice, "finish_reason", None)
-                if finish_reason:
-                    break
-                delta = getattr(choice, "delta", None)
-                if delta is None:
-                    continue
-                content = getattr(delta, "content", None)
-                if content:
-                    yield content
-        else:
-            resp = await client.chat.completions.create(**params)
-            yield resp.choices[0].message.content
 
     async def _yield_openai_stream_tokens(self, stream_obj) -> AsyncIterator[str]:
         text_stream = getattr(stream_obj, "text_stream", None)

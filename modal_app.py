@@ -20,7 +20,7 @@ app = modal.App("axiom", image=image)
     volumes={"/data": data_volume},
     secrets=[modal.Secret.from_name("axiom-secrets")],
     timeout=120,
-    min_containers=0,
+    min_containers=1,
 )
 @modal.asgi_app()
 def fastapi_app():
@@ -33,7 +33,8 @@ def fastapi_app():
     from main import app as axiom_app
     return axiom_app
 
-@app.function(schedule=modal.Period(minutes=5))
+@app.function(schedule=modal.Period(minutes=2))
 def keep_warm():
     import httpx
-    httpx.get("https://endraode-7--superaxiom-fastapi-app.modal.run/api/health")
+    target = os.getenv("AXIOM_HEALTHCHECK_URL", "https://endraode-7--axiom-fastapi-app.modal.run/api/health")
+    httpx.get(target, timeout=10)

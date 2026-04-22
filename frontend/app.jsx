@@ -1,6 +1,27 @@
 const { useState, useEffect, useRef, useCallback } = React;
 
-const API = 'https://endraode-7--axiom-fastapi-app.modal.run';
+function resolveApiBase() {
+  const qsApi = new URLSearchParams(window.location.search).get('api');
+  if (qsApi) {
+    try { localStorage.setItem('sa_api_base', qsApi); } catch {}
+  }
+
+  let storedApi = '';
+  try { storedApi = localStorage.getItem('sa_api_base') || ''; } catch {}
+
+  const fromWindow = (window.SUPERAXIOM_API || '').trim();
+  const currentOrigin = window.location.origin;
+
+  // If frontend is served from Modal app itself, use same-origin backend.
+  if (currentOrigin.includes('modal.run') && !fromWindow && !storedApi && !qsApi) {
+    return currentOrigin;
+  }
+
+  const chosen = (qsApi || fromWindow || storedApi || 'https://endraode-7--axiom-fastapi-app.modal.run').trim();
+  return chosen.replace(/\/$/, '');
+}
+
+const API = resolveApiBase();
 
 function readStoredJson(key, fallback) {
   try {
@@ -787,7 +808,6 @@ function Loading({ paper, mode, length, question, onDone }) {
 
         if (meta.cached) {
           setStage('Paper already indexed · starting summary…');
-          setEmbedReady(true);
           setProgress(85);
         } else {
           setStage('Queuing paper for indexing…');
@@ -827,27 +847,61 @@ function Loading({ paper, mode, length, question, onDone }) {
 
           setProgress(88);
           setStage('Indexed · building summary…');
-          setEmbedReady(true);
         }
         } // end arXiv else-branch
 
         // ── SSE summarization stream ─────────────────────────────────────
         setProgress(90);
-        let fullText = '';
-        xhr = streamSSE(
-          `${API}/api/summarize/stream`,
-          { paper_id: paper.id, mode, length, user_questions: question },
-          (token) => {
-            fullText += token;
-            setProgress(90 + Math.min(9, fullText.length / 200));
-          },
-          () => {
-            if (!cancelled) onDone(fullText, paper, mode, length);
-          },
-          (err) => {
-            if (!cancelled) setError(err);
+        const isNotReady = (msg) => /not ready|NOT_READY|425/i.test(String(msg || ''));
+
+        const waitForEmbeddingVisibility = async () => {
+          for (let i = 0; i < 6; i++) {
+            if (cancelled) return false;
+            if (isLocalPaper(paper.id)) {
+              if (await apiLocalPaperReady(paper.id)) return true;
+            } else {
+              const status = await apiEmbedStatus(paper.id);
+              if (status.status === 'done') return true;
+              if (status.status === 'error') throw new Error(status.error || 'Embedding failed — check backend logs.');
+            }
+            await new Promise(r => setTimeout(r, 1000));
           }
-        );
+          return false;
+        };
+
+        const startSummaryStream = (attempt = 0) => {
+          let fullText = '';
+          xhr = streamSSE(
+            `${API}/api/summarize/stream`,
+            { paper_id: paper.id, mode, length, user_questions: question },
+            (token) => {
+              fullText += token;
+              setProgress(90 + Math.min(9, fullText.length / 200));
+            },
+            () => {
+              if (!cancelled) onDone(fullText, paper, mode, length);
+            },
+            (err) => {
+              if (cancelled) return;
+              if (isNotReady(err) && attempt < 3) {
+                setStage('Finalizing index visibility… retrying summary start');
+                setProgress(89);
+                (async () => {
+                  try {
+                    await waitForEmbeddingVisibility();
+                    if (!cancelled) startSummaryStream(attempt + 1);
+                  } catch (e) {
+                    if (!cancelled) setError(e.message || String(e));
+                  }
+                })();
+                return;
+              }
+              setError(err);
+            }
+          );
+        };
+
+        startSummaryStream();
       } catch (e) {
         if (!cancelled) setError(e.message);
       }
@@ -950,7 +1004,7 @@ function Analysis({ summaryText, paper, mode, length, onNavigate }) {
   const [qaQuestion, setQaQuestion] = useState('');
   const [qaHistory, setQaHistory] = useState([]);
   const [qaStreaming, setQaStreaming] = useState(false);
-  const [embedReady, setEmbedReady] = useState(false);
+  const [embedReady, setEmbedReady] = useState(true);
   const [qaQueue, setQaQueue] = useState([]);
   const qaXhrRef = useRef(null);
   const qaMessagesRef = useRef(null);

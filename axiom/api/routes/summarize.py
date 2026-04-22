@@ -1,6 +1,7 @@
 import json
 import re
 import time
+import asyncio
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse, HTMLResponse
 from pydantic import BaseModel
@@ -130,7 +131,8 @@ return md
 
 @router.post("/stream")
 async def summarize_stream(req: SummarizeRequest):
-    if not await vector_agent.exists(req.paper_id):
+    ready = await _wait_for_vectors(req.paper_id)
+    if not ready:
         raise HTTPException(425, {"error": "Paper not ready. Wait for prefetch.", "code": "NOT_READY"})
     meta = await _get_meta(req.paper_id)
 
@@ -160,3 +162,13 @@ async def _get_meta(paper_id: str) -> dict:
     if meta:
         return {"title": meta.title, "authors": meta.authors, "year": meta.year}
     return {"title": paper_id, "authors": [], "year": 0}
+
+
+async def _wait_for_vectors(paper_id: str, retries: int = 6, delay_s: float = 0.5) -> bool:
+    """Small grace window to smooth cross-instance storage visibility lag."""
+    for attempt in range(retries + 1):
+        if await vector_agent.exists(paper_id):
+            return True
+        if attempt < retries:
+            await asyncio.sleep(delay_s)
+    return False
