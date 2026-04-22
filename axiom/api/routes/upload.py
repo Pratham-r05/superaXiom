@@ -36,12 +36,16 @@ async def list_uploads():
         paper_id = pdf.stem
         meta = upload_agent.load_meta(paper_id)
         cached = await vector_agent.exists(paper_id)
+        # Surface embedding failures written by embed_in_background
+        error_path = upload_dir / f"{paper_id}.error"
+        embed_error = error_path.read_text().strip() if error_path.exists() else None
         papers.append({
             "paper_id": paper_id,
             "title": meta.get("title", pdf.name),
             "authors": meta.get("authors", []),
             "uploaded_at": pdf.stat().st_mtime,
-            "ready": cached
+            "ready": cached,
+            "error": embed_error,
         })
     return {"papers": sorted(papers, key=lambda x: x["uploaded_at"], reverse=True)}
 
@@ -50,7 +54,7 @@ async def delete_upload(paper_id: str):
     await vector_agent.delete(paper_id)
     config = get_config()
     upload_dir = Path(config.UPLOAD_DIR) / "local"
-    for ext in [".pdf", ".json"]:
+    for ext in [".pdf", ".json", ".error"]:
         f = upload_dir / f"{paper_id}{ext}"
         if f.exists():
             f.unlink()

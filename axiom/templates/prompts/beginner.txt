@@ -6,19 +6,19 @@ Year: {YEAR}
 
 You MUST use EXACTLY these 5 section headers. Do not add, remove, rename, or reorder them:
 
-## 🧩 What Problem Does This Solve?
+## What Problem Does This Solve?
 Explain the real-world problem. Use a relatable analogy. No jargon.
 
-## 💡 The Big Idea
+## The Big Idea
 The core innovation in plain English. What did the authors figure out that nobody had before?
 
-## 🔬 How It Actually Works
+## How It Actually Works
 Step-by-step walkthrough using numbered steps. Avoid heavy math notation.
 
-## 📊 Results & What They Mean
+## Results & What They Mean
 What did experiments show? Why should a non-expert care?
 
-## 🚀 Why This Matters
+## Why This Matters
 Real-world implications. What becomes possible now?
 
 {USER_QUESTIONS_BLOCK}

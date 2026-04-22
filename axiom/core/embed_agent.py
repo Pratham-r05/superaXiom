@@ -7,47 +7,29 @@ logger = logging.getLogger(__name__)
 # Batch size for embedding requests — tune based on your Ollama / GPU capacity
 DEFAULT_BATCH_SIZE = 32
 
-# Cached sentence-transformers model (loaded once, reused forever)
-_st_model = None
-
-
-def _get_st_model():
-    """Lazy-load and cache the sentence-transformers fallback model."""
-    global _st_model
-    if _st_model is None:
-        logger.info("Loading sentence-transformers fallback model (all-MiniLM-L6-v2)...")
-        from sentence_transformers import SentenceTransformer
-        _st_model = SentenceTransformer("all-MiniLM-L6-v2")
-        logger.info("Sentence-transformers model loaded.")
-    return _st_model
-
 
 async def embed_chunks(chunks: list[str], batch_size: int = DEFAULT_BATCH_SIZE) -> list[list[float]]:
-    """Embed a list of text chunks using batched requests for speed."""
+    """Embed a list of text chunks using Ollama."""
     config = get_config()
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     embeddings: list[list[float]] = []
 
     for batch_start in range(0, len(chunks), batch_size):
         batch = chunks[batch_start:batch_start + batch_size]
-        try:
-            batch_embeddings = await loop.run_in_executor(
-                None,
-                lambda b=batch: _embed_batch(b, config.EMBEDDING_MODEL)
-            )
-            embeddings.extend(batch_embeddings)
-        except Exception as e:
-            logger.error(f"Embedding failed for batch starting at {batch_start}: {e}")
-            raise
+        batch_embeddings = await loop.run_in_executor(
+            None,
+            lambda b=batch: _embed_batch(b, config.EMBEDDING_MODEL)
+        )
+        embeddings.extend(batch_embeddings)
 
-    logger.info(f"Embedded {len(embeddings)} chunks in { (len(chunks) + batch_size - 1) // batch_size } batch(es)")
+    logger.info(f"Embedded {len(embeddings)} chunks in {(len(chunks) + batch_size - 1) // batch_size} batch(es)")
     return embeddings
 
 
 async def embed_query(query: str) -> list[float]:
     """Embed a single query string."""
     config = get_config()
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     results = await loop.run_in_executor(
         None,
         lambda: _embed_batch([query], config.EMBEDDING_MODEL)
@@ -56,28 +38,55 @@ async def embed_query(query: str) -> list[float]:
 
 
 def _embed_batch(texts: list[str], model: str) -> list[list[float]]:
-    """Embed a batch of texts. Tries Ollama batch API, then single-prompt API, then cached ST fallback."""
+    """Embed a batch of texts via Ollama.
 
-    # 1. Try Ollama's batch `embed` API (newer versions)
+    The Ollama Python client returns Pydantic models, not plain dicts, so we
+    use attribute access (response.embeddings) with a dict-key fallback for
+    older SDK versions that returned plain dicts.
+
+    Tries the newer batch `embed` API first, then falls back to the legacy
+    single-prompt `embeddings` API. If both fail, raises a clear error.
+    """
+    import ollama
+
+    def _extract(obj, *keys):
+        """Get a value from either a Pydantic model (attr) or a plain dict (key)."""
+        for k in keys:
+            v = getattr(obj, k, None)
+            if v is not None:
+                return v
+            if isinstance(obj, dict):
+                v = obj.get(k)
+                if v is not None:
+                    return v
+        return None
+
+    # 1. Newer Ollama: batch embed API (returns EmbedResponse with .embeddings)
     try:
-        import ollama
         response = ollama.embed(model=model, input=texts)
-        return response["embeddings"]
+        embs = _extract(response, "embeddings", "embedding")
+        if embs:
+            return list(embs)
     except Exception:
-        pass  # Method may not exist in this ollama version
+        pass
 
-    # 2. Fall back to Ollama's single-prompt `embeddings` API (always works)
+    # 2. Legacy Ollama: single-prompt embeddings API (returns EmbeddingResponse with .embedding)
+    last_err = None
     try:
-        import ollama
-        embeddings = []
+        result_list = []
         for text in texts:
             result = ollama.embeddings(model=model, prompt=text)
-            embeddings.append(result["embedding"])
-        return embeddings
+            emb = _extract(result, "embedding", "embeddings")
+            if not emb:
+                raise ValueError(f"Empty embedding returned for model '{model}'")
+            result_list.append(list(emb))
+        return result_list
     except Exception as e:
-        logger.warning(f"Ollama embedding failed ({e}), using cached sentence-transformers fallback")
+        last_err = e
 
-    # 3. Last resort: cached sentence-transformers (loaded once)
-    m = _get_st_model()
-    embeddings = m.encode(texts, batch_size=len(texts), convert_to_numpy=True)
-    return [emb.tolist() for emb in embeddings]
+    # Both failed — clear, actionable error
+    raise RuntimeError(
+        f"Ollama embedding failed with model '{model}'. "
+        f"Ensure Ollama is running and the model is available: "
+        f"`ollama pull {model}`. Detail: {last_err}"
+    )

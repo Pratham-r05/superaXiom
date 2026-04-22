@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import AsyncIterator
 from axiom.core.rag_agent import retrieve, build_context, stream
 
-PROMPTS_DIR = Path("axiom/templates/prompts")
+PROMPTS_DIR = Path(__file__).parent.parent / "templates" / "prompts"
 STRUCTURE = {
     "length": {
         "short":  "1-2 sentences per section. Total: 150-250 words. Be extremely concise.",

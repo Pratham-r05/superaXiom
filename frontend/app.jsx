@@ -63,6 +63,28 @@ async function apiAvailableModels() {
   return r.json();
 }
 
+async function apiEmbedStatus(arxivId) {
+  const r = await fetch(`${API}/api/search/embed-status/${arxivId}`);
+  return r.json();
+}
+
+async function apiLocalPaperReady(paperId) {
+  try {
+    const r = await fetch(`${API}/api/upload/list`);
+    const data = await r.json();
+    const found = (data.papers || []).find(p => p.paper_id === paperId);
+    if (found?.error) throw new Error(`Embedding failed: ${found.error}`);
+    return found?.ready === true;
+  } catch (e) {
+    if (e.message.startsWith('Embedding failed')) throw e; // propagate backend errors
+    return false; // network errors — keep retrying
+  }
+}
+
+function isLocalPaper(id) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id);
+}
+
 function streamSSE(url, body, onToken, onDone, onError) {
   const xhr = new XMLHttpRequest();
   xhr.open('POST', url, true);
@@ -117,14 +139,7 @@ function streamSSE(url, body, onToken, onDone, onError) {
   return xhr;
 }
 
-async function pollUntilReady(arxivId, maxAttempts = 60, intervalMs = 2000) {
-  for (let i = 0; i < maxAttempts; i++) {
-    const meta = await apiPaperMeta(arxivId);
-    if (meta.cached) return true;
-    await new Promise(r => setTimeout(r, intervalMs));
-  }
-  throw new Error('Paper embedding timed out');
-}
+// pollUntilReady is no longer used — Loading polls embed-status directly.
 
 // ============ PILL NAV ============
 function PillNav({ active, onNavigate }) {
@@ -330,10 +345,38 @@ function QueryPage({ onNavigate, onSubmit }) {
   const [question, setQuestion] = useState(savedDraft?.question || '');
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState(null);
+  const [pendingFileName, setPendingFileName] = useState(null);
+  const [localPapers, setLocalPapers] = useState([]);
   const searchTimer = useRef(null);
   const abortRef = useRef(null);
 
+  // Load previously uploaded papers on mount
   useEffect(() => {
+    fetch(`${API}/api/upload/list`)
+      .then(r => r.json())
+      .then(data => setLocalPapers(data.papers || []))
+      .catch(() => {});
+  }, []);
+
+  const handleDeleteUpload = async (paperId) => {
+    try {
+      await fetch(`${API}/api/upload/${paperId}`, { method: 'DELETE' });
+      setLocalPapers(prev => prev.filter(p => p.paper_id !== paperId));
+      if (selectedPaper?.id === paperId) {
+        setSelectedPaper(null);
+        setSearchQuery('');
+        setUploadStatus(null);
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (selectedPaper?.source === 'local') {
+      setSearching(false);
+      setSearchResults([]);
+      return;
+    }
+
     const trimmedQuery = searchQuery.trim();
 
     clearTimeout(searchTimer.current);
@@ -405,18 +448,42 @@ function QueryPage({ onNavigate, onSubmit }) {
   const handleUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    e.target.value = '';
+    setPendingFileName(file.name);
     setUploading(true);
+    setUploadStatus(null);
     const fd = new FormData();
     fd.append('file', file);
     try {
       const r = await fetch(`${API}/api/upload/pdf`, { method: 'POST', body: fd });
       const data = await r.json();
-      setUploadStatus(data);
-      setTimeout(() => setUploadStatus(null), 5000);
+      if (!r.ok) {
+        const msg = data?.detail?.error || data?.detail || `Upload failed (${r.status})`;
+        setUploadStatus({ error: String(msg) });
+      } else {
+        const uploaded = {
+          id: data.paper_id,
+          title: data.title || file.name.replace(/\.pdf$/i, ''),
+          authors: data.authors || [],
+          year: 0,
+          abstract: '',
+          source: 'local',
+          cached: false,
+        };
+        selectPaper(uploaded);
+        setUploadStatus({ title: uploaded.title, page_count: data.page_count });
+        // Add to local papers list immediately so it shows in "Previously uploaded"
+        setLocalPapers(prev => [{
+          paper_id: data.paper_id, title: uploaded.title,
+          authors: uploaded.authors, ready: false, error: null,
+          uploaded_at: Date.now() / 1000,
+        }, ...prev]);
+      }
     } catch (err) {
       setUploadStatus({ error: err.message });
     }
     setUploading(false);
+    setPendingFileName(null);
   };
 
   const handleSubmit = () => {
@@ -540,13 +607,29 @@ function QueryPage({ onNavigate, onSubmit }) {
               </div>
               <label className="upload-drop" style={{ cursor: uploading ? 'wait' : 'pointer' }}>
                 <input type="file" accept=".pdf" style={{ display:'none' }} onChange={handleUpload} disabled={uploading} />
-                <div className="upload-icon">⬆</div>
-                <div className="upload-title">{uploading ? 'Uploading…' : 'Drop a PDF here'}</div>
-                <div className="upload-sub">or <u>browse files</u> — upto 50 MB</div>
+                <div className="upload-icon" style={{ color: uploadStatus?.error ? 'var(--accent)' : undefined }}>
+                  {uploading ? '⏳' : uploadStatus?.error ? '✗' : '⬆'}
+                </div>
+                <div className="upload-title">
+                  {uploading
+                    ? (pendingFileName ? `Uploading ${pendingFileName}…` : 'Uploading…')
+                    : uploadStatus?.error ? 'Upload failed'
+                    : 'Drop a PDF here'}
+                </div>
+                <div className="upload-sub">
+                  {uploadStatus?.error
+                    ? <span style={{ color: 'var(--accent)', fontStyle: 'italic' }}>{uploadStatus.error}</span>
+                    : <span>or <u>browse files</u> — up to 50 MB</span>}
+                </div>
               </label>
               <div className="upload-foot">
-                {uploadStatus ? (
-                  <span style={{ color: 'var(--ok)' }}>✓ {uploadStatus.title || 'Uploaded'}</span>
+                {uploadStatus?.error ? (
+                  <span style={{ color: 'var(--accent)' }}>✗ Error — try again</span>
+                ) : uploadStatus ? (
+                  <span style={{ color: 'var(--ok)' }}>
+                    ✓ {uploadStatus.title || 'Uploaded'}
+                    {uploadStatus.page_count ? ` · ${uploadStatus.page_count} pages` : ''}
+                  </span>
                 ) : (
                   <span>● Ready</span>
                 )}
@@ -555,14 +638,70 @@ function QueryPage({ onNavigate, onSubmit }) {
 
             {selectedPaper && (
               <div className="paper-preview" style={{ marginTop: 24 }}>
-                <div className="label">Preview · will be indexed</div>
+                <div className="label">
+                  {selectedPaper.source === 'local' ? 'Local PDF · embedding in background' : 'Preview · will be indexed'}
+                </div>
                 <h4>{selectedPaper.title}</h4>
                 <div className="authors">{selectedPaper.authors?.join(', ') || 'Unknown authors'}</div>
                 <div className="meta-row">
-                  <span>arXiv · {selectedPaper.id}</span>
-                  <span className={selectedPaper.cached ? 'status-dot' : ''}>
-                    {selectedPaper.cached ? '● ready' : '○ will prefetch'}
+                  <span>
+                    {selectedPaper.source === 'local'
+                      ? `Local · ${selectedPaper.id.slice(0, 8)}…`
+                      : `arXiv · ${selectedPaper.id}`}
                   </span>
+                  <span className={selectedPaper.cached ? 'status-dot' : ''}>
+                    {selectedPaper.source === 'local'
+                      ? '⏳ embedding…'
+                      : selectedPaper.cached ? '● ready' : '○ will prefetch'}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {localPapers.length > 0 && (
+              <div style={{ marginTop: 24 }}>
+                <div className="label" style={{ marginBottom: 10 }}>Previously uploaded</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {localPapers.map(p => (
+                    <div key={p.paper_id} style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '8px 12px', border: '1px solid var(--rule)', borderRadius: 4,
+                      background: selectedPaper?.id === p.paper_id ? 'rgba(139,111,71,0.08)' : 'transparent',
+                    }}>
+                      <button
+                        type="button"
+                        onClick={() => selectPaper({
+                          id: p.paper_id,
+                          title: p.title,
+                          authors: p.authors || [],
+                          year: 0,
+                          abstract: '',
+                          source: 'local',
+                          cached: p.ready,
+                        })}
+                        style={{ background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', flex: 1, padding: 0 }}
+                      >
+                        <div style={{ fontFamily: 'Instrument Serif, serif', fontSize: 14, color: 'var(--ink)' }}>
+                          {p.title}
+                        </div>
+                        <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
+                          {p.error
+                            ? <span style={{ color: 'var(--accent)' }}>✗ embedding failed</span>
+                            : p.ready ? '● ready' : '○ embedding…'}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        title="Delete"
+                        onClick={() => handleDeleteUpload(p.paper_id)}
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          color: 'var(--muted)', fontSize: 16, padding: '0 4px',
+                          lineHeight: 1, flexShrink: 0,
+                        }}
+                      >×</button>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -601,49 +740,104 @@ function QueryPage({ onNavigate, onSubmit }) {
 function Loading({ paper, mode, length, question, onDone }) {
   const [progress, setProgress] = useState(0);
   const [stage, setStage] = useState('Starting…');
+  const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState(null);
-  const stages = [
-    'Checking if paper is cached…',
-    'Locating paper on Semantic Scholar…',
-    'Downloading full PDF…',
-    'Extracting text · chunking…',
-    'Embedding with nomic-embed-text…',
-    'Storing in ChromaDB · permanent…',
-    'Paper ready · starting summary…',
-  ];
 
   useEffect(() => {
     let cancelled = false;
     let xhr = null;
+    const startTime = Date.now();
+
+    // Elapsed-time ticker — runs independently of polling
+    const ticker = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+
     const run = async () => {
       try {
-        setStage(stages[0]);
+        setStage('Checking if paper is cached…');
         setProgress(10);
 
+        if (isLocalPaper(paper.id)) {
+          // ── Local uploaded PDF — embedding already started on upload ─────
+          // Poll /api/upload/list until the vectors are in ChromaDB.
+          // No hard cap — stop only when ready. Large PDFs can take 10+ min on CPU-only Ollama.
+          let ready = false;
+          let pollInterval = 2000; // start fast, slow down after 2 min
+          while (!cancelled) {
+            ready = await apiLocalPaperReady(paper.id);
+            if (ready) break;
+            const secs = Math.floor((Date.now() - startTime) / 1000);
+            const mins = Math.floor(secs / 60);
+            const remSecs = secs % 60;
+            const elapsed = mins > 0
+              ? `${mins}m ${remSecs}s elapsed`
+              : `${secs}s elapsed`;
+            setStage(`Embedding with nomic-embed-text… ${elapsed} — large PDFs can take a few minutes`);
+            setProgress(20 + Math.min(65, Math.log1p(secs) * 10));
+            // Slow the poll rate down after 2 minutes to reduce server load
+            if (secs > 120) pollInterval = 5000;
+            await new Promise(r => setTimeout(r, pollInterval));
+          }
+          if (!ready) return; // cancelled
+        } else {
+          // ── arXiv paper ────────────────────────────────────────────────
         const meta = await apiPaperMeta(paper.id);
         if (cancelled) return;
-        setStage(meta.cached ? stages[6] : stages[1]);
-        setProgress(meta.cached ? 80 : 20);
 
-        if (!meta.cached) {
+        if (meta.cached) {
+          setStage('Paper already indexed · starting summary…');
+          setProgress(85);
+        } else {
+          setStage('Queuing paper for indexing…');
+          setProgress(15);
           await apiPrefetch(paper.id);
-          setStage(stages[2]);
-          setProgress(30);
-          await pollUntilReady(paper.id, 90, 2000);
           if (cancelled) return;
+
+          // ── Poll embed-status until done or error ───────────────────────
+          // NO hard timeout — we stop only when the backend says done/error.
+          // Large papers with many chunks can take 5-10 min; that is normal.
+          while (!cancelled) {
+            const status = await apiEmbedStatus(paper.id);
+            if (cancelled) return;
+
+            if (status.status === 'done') {
+              break; // fall through to summary stream
+            }
+
+            if (status.status === 'error') {
+              throw new Error(status.error || 'Embedding failed — check backend logs.');
+            }
+
+            // Still running — update UI from backend stage string
+            const backendStage = status.stage || 'Processing…';
+            setStage(backendStage);
+
+            // Animate progress bar from 15 → 82 proportionally to elapsed time.
+            // We don't know total time, so we use a logarithmic curve so it
+            // always creeps forward without ever reaching 82 on its own.
+            const secs = Math.floor((Date.now() - startTime) / 1000);
+            const fakeP = Math.min(82, 15 + Math.log1p(secs) * 10);
+            setProgress(fakeP);
+
+            await new Promise(r => setTimeout(r, 3000));
+          }
+          if (cancelled) return;
+
+          setProgress(88);
+          setStage('Indexed · building summary…');
         }
+        } // end arXiv else-branch
 
+        // ── SSE summarization stream ─────────────────────────────────────
         setProgress(90);
-        setStage(stages[6]);
-
-        // Start SSE stream
         let fullText = '';
         xhr = streamSSE(
           `${API}/api/summarize/stream`,
           { paper_id: paper.id, mode, length, user_questions: question },
           (token) => {
             fullText += token;
-            setProgress(90 + Math.min(10, fullText.length / 200));
+            setProgress(90 + Math.min(9, fullText.length / 200));
           },
           () => {
             if (!cancelled) onDone(fullText, paper, mode, length);
@@ -656,24 +850,37 @@ function Loading({ paper, mode, length, question, onDone }) {
         if (!cancelled) setError(e.message);
       }
     };
+
     run();
-    return () => { cancelled = true; if (xhr) xhr.abort(); };
+    return () => {
+      cancelled = true;
+      clearInterval(ticker);
+      if (xhr) xhr.abort();
+    };
   }, [paper, mode, length, question, onDone]);
 
-  const streaks = [];
-  for (let i = 0; i < 120; i++) {
-    const angle = (i / 120) * 360 + (Math.random() * 6 - 3);
-    const len = 60 + Math.random() * 340;
-    const delay = Math.random() * 2;
-    const dur = 0.6 + Math.random() * 1.1;
-    const isRed = i % 11 === 0;
-    streaks.push(
-      <div key={i} className={`streak ${isRed ? 'red' : ''}`} style={{
-        height: `${len}px`, transform: `translate(-50%, 0) rotate(${angle}deg)`,
-        animation: `streakFly ${dur}s linear ${delay}s infinite`,
-      }} />
-    );
+  // Freeze streaks array so it doesn't re-randomise on every render
+  const streaks = useRef(null);
+  if (!streaks.current) {
+    streaks.current = Array.from({ length: 120 }, (_, i) => {
+      const angle = (i / 120) * 360 + (Math.random() * 6 - 3);
+      const len   = 60 + Math.random() * 340;
+      const delay = Math.random() * 2;
+      const dur   = 0.6 + Math.random() * 1.1;
+      const isRed = i % 11 === 0;
+      return (
+        <div key={i} className={`streak ${isRed ? 'red' : ''}`} style={{
+          height: `${len}px`, transform: `translate(-50%, 0) rotate(${angle}deg)`,
+          animation: `streakFly ${dur}s linear ${delay}s infinite`,
+        }} />
+      );
+    });
   }
+
+  const fmtElapsed = (s) => {
+    if (s < 60) return `${s}s`;
+    return `${Math.floor(s / 60)}m ${s % 60}s`;
+  };
 
   if (error) {
     return (
@@ -681,7 +888,7 @@ function Loading({ paper, mode, length, question, onDone }) {
         <div className="loading-content">
           <div className="brand">superaXiom</div>
           <h1 style={{ color: 'var(--accent)' }}>Something went <em>wrong.</em></h1>
-          <div className="sub" style={{ marginTop: 20 }}>{error}</div>
+          <div className="sub" style={{ marginTop: 20, maxWidth: 560, lineHeight: 1.5 }}>{error}</div>
           <button className="pill-cta" style={{ marginTop: 40 }} onClick={() => onDone('', null, '', '')}>
             Go back
           </button>
@@ -699,7 +906,7 @@ function Loading({ paper, mode, length, question, onDone }) {
           100% { transform-origin: center 0; opacity: 0; height: 800px; }
         }
       `}</style>
-      <div className="streaks-bg">{streaks}</div>
+      <div className="streaks-bg">{streaks.current}</div>
       <div className="loading-content">
         <div className="brand">superaXiom</div>
         <h1>Going <em>hyperspeed</em><br/>through your paper.</h1>
@@ -708,6 +915,20 @@ function Loading({ paper, mode, length, question, onDone }) {
           <div className="bar" style={{ width: `${progress}%` }} />
         </div>
         <div className="loading-stages">› {stage}</div>
+        {elapsed >= 20 && (
+          <div style={{
+            marginTop: 14,
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 11,
+            letterSpacing: '.2em',
+            textTransform: 'uppercase',
+            opacity: .55,
+          }}>
+            {elapsed >= 120
+              ? `Large paper — still indexing · ${fmtElapsed(elapsed)} elapsed`
+              : `Indexing · ${fmtElapsed(elapsed)} elapsed`}
+          </div>
+        )}
       </div>
       <div className="loading-ticker">
         <span>sys · local inference</span>
@@ -776,26 +997,42 @@ function Analysis({ summaryText, paper, mode, length, onNavigate }) {
 
   const renderInline = (text) => {
     if (!text) return text;
-    // split on **bold**, `code`, $inline-math$, \( inline-math \)
-    const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\$[^$\n]+\$|\\\([^)]+\\\))/g);
+    // Order matters: $$ before $; \[ and \( use [\s\S]+? (dotall) so nested parens/brackets work
+    const parts = text.split(/(\$\$[\s\S]+?\$\$|\$(?!\$)[^$\n]+?\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)|\*\*[^*]+\*\*|`[^`]+`)/g);
     return parts.map((part, i) => {
-      if (part.startsWith('**') && part.endsWith('**')) {
-        return <strong key={i}>{part.slice(2, -2)}</strong>;
+      // Display math: $$...$$ or \[...\]
+      if ((part.startsWith('$$') && part.endsWith('$$')) ||
+          (part.startsWith('\\[') && part.endsWith('\\]'))) {
+        const latex = part.slice(2, -2).trim();
+        try {
+          if (window.katex) {
+            const html = window.katex.renderToString(latex, { displayMode: true, throwOnError: false, output: 'html' });
+            return <span key={i} style={{ display: 'block', margin: '16px 0' }} dangerouslySetInnerHTML={{ __html: html }} />;
+          }
+        } catch {}
+        return <div key={i} className="formula">{latex}</div>;
       }
-      if (part.startsWith('`') && part.endsWith('`')) {
-        return <code key={i} className="inline-code" style={{ background: 'var(--paper-deep)', padding: '2px 6px', borderRadius: 3, fontSize: '0.92em' }}>{part.slice(1, -1)}</code>;
-      }
+      // Inline math: $...$ or \(...\)
       if (part.startsWith('$') && part.endsWith('$')) {
         return <span key={i}>{katexInline(part.slice(1, -1))}</span>;
       }
       if (part.startsWith('\\(') && part.endsWith('\\)')) {
         return <span key={i}>{katexInline(part.slice(2, -2))}</span>;
       }
-      const italicParts = part.split(/(\*[^*]+\*)/g);
-      if (italicParts.some((p, idx) => idx % 2 === 1)) {
-        return <span key={i}>{italicParts.map((p, j) => j % 2 === 1 ? <em key={j}>{p.slice(1, -1)}</em> : p)}</span>;
+      // Bold: **...**
+      if (part.startsWith('**') && part.endsWith('**')) {
+        return <strong key={i}>{part.slice(2, -2)}</strong>;
       }
-      return text === part ? part : <span key={i}>{part}</span>;
+      // Code: `...`
+      if (part.startsWith('`') && part.endsWith('`')) {
+        return <code key={i} className="inline-code" style={{ background: 'var(--paper-deep)', padding: '2px 6px', borderRadius: 3, fontSize: '0.92em' }}>{part.slice(1, -1)}</code>;
+      }
+      // Italic: *...*
+      const italicParts = part.split(/(\*[^*\n]+\*)/g);
+      if (italicParts.length > 1 && italicParts.some((p, idx) => idx % 2 === 1)) {
+        return <span key={i}>{italicParts.map((p, j) => j % 2 === 1 && p.length > 2 ? <em key={j}>{p.slice(1, -1)}</em> : p)}</span>;
+      }
+      return part;
     });
   };
 
@@ -970,20 +1207,44 @@ function Analysis({ summaryText, paper, mode, length, onNavigate }) {
     setQaQueue([]);
   };
 
+  const handleDownloadPDF = useCallback(() => {
+    const prevTitle = document.title;
+    document.title = `${paper?.title || 'Analysis'} — superaXiom`;
+    const onAfterPrint = () => {
+      document.title = prevTitle;
+      window.removeEventListener('afterprint', onAfterPrint);
+    };
+    window.addEventListener('afterprint', onAfterPrint);
+    window.print();
+  }, [paper]);
+
   const modeLabels = { beginner: 'Beginner', mathematical: 'Mathematical', technical: 'Technical', intuitive: 'Intuitive' };
+
+  const cleanSectionTitle = (title = '') =>
+    title
+      .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
 
   return (
     <div className="analysis" data-screen-label="04 Analysis">
       <div className="analysis-wrap">
-        <div style={{ marginBottom: 18 }}>
+        <div style={{ display: 'flex', gap: 10, marginBottom: 18 }}>
           <button className="back-btn" onClick={() => onNavigate('query')}>
             ← Back to Query
+          </button>
+          <button className="zupp-btn" type="button" onClick={handleDownloadPDF}>
+            ↓ ZUPP
           </button>
         </div>
         <div className="paper-header">
           <div>
             <div className="meta-top">
-              <span>arXiv · {paper?.id || '—'}</span>
+              <span>
+                {paper?.source === 'local'
+                  ? `Local PDF · ${paper?.id?.slice(0, 8) || '—'}…`
+                  : `arXiv · ${paper?.id || '—'}`}
+              </span>
               <span className="dot">●</span>
               <span>Mode · {modeLabels[mode] || mode}</span>
               <span className="dot">●</span>
@@ -992,7 +1253,7 @@ function Analysis({ summaryText, paper, mode, length, onNavigate }) {
               <span>Generated · {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
             </div>
             <h1>{paper?.title || 'Paper'}.</h1>
-            <div className="authors">{paper?.authors?.join(', ') || 'Unknown authors'}</div>
+            <div className="authors">{paper?.authors?.length ? paper.authors.join(', ') : (paper?.source === 'local' ? 'Local document' : 'Unknown authors')}</div>
           </div>
           <div className="paper-header-side">
             <div className="row"><span>mode</span><span>{mode}</span></div>
@@ -1008,7 +1269,7 @@ function Analysis({ summaryText, paper, mode, length, onNavigate }) {
             <ul>
               {parsedSections.map((s, i) => (
                 <li key={i} className={active === `s${i+1}` ? 'active' : ''} onClick={() => { setActive(`s${i+1}`); const el = document.getElementById(`s${i+1}`); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>
-                  <span className="num">§{i+1}</span><span>{s.title}</span>
+                  <span className="num">§{i+1}</span><span>{cleanSectionTitle(s.title)}</span>
                 </li>
               ))}
             </ul>
@@ -1028,7 +1289,7 @@ function Analysis({ summaryText, paper, mode, length, onNavigate }) {
             ) : (
               parsedSections.map((s, i) => (
                 <div key={i} id={`s${i+1}`}>
-                  <h2><span className="section-num">§{i+1}</span>{s.title}</h2>
+                  <h2><span className="section-num">§{i+1}</span>{cleanSectionTitle(s.title)}</h2>
                   {renderMarkdown(s.content)}
                 </div>
               ))

@@ -760,6 +760,63 @@
   }
   .back-btn:hover { background: var(--ink); color: var(--paper); transform: translateX(-2px); }
 
+  .zupp-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: var(--accent);
+    color: var(--paper);
+    border: none;
+    padding: 8px 16px;
+    border-radius: 999px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .18em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform .2s, box-shadow .2s;
+  }
+  .zupp-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(200,72,58,.4); }
+  .zupp-btn:active { transform: translateY(0); }
+
+  /* Print-safe mode used during html2pdf export */
+  .report-exporting .analysis-wrap {
+    max-width: 1100px !important;
+  }
+  .report-exporting .analysis-body {
+    grid-template-columns: 1fr !important;
+    gap: 0 !important;
+  }
+  .report-exporting .toc,
+  .report-exporting .margin-notes,
+  .report-exporting .qa-strip,
+  .report-exporting .qa-panel {
+    display: none !important;
+  }
+  .report-exporting .paper-header {
+    grid-template-columns: 1fr !important;
+  }
+  .report-exporting .paper-header-side {
+    display: none !important;
+  }
+  .report-exporting .article {
+    font-size: 17px !important;
+  }
+  .report-exporting .article p {
+    max-width: none !important;
+  }
+  .report-exporting .article p:first-of-type::first-letter {
+    float: none !important;
+    font-size: inherit !important;
+    line-height: inherit !important;
+    padding: 0 !important;
+    color: inherit !important;
+    font-family: inherit !important;
+    font-weight: inherit !important;
+  }
+
   .paper-header {
     border-top: 2px solid var(--ink);
     border-bottom: 1px solid var(--ink);
@@ -1094,6 +1151,67 @@
     .paper-header { grid-template-columns: 1fr; }
   }
 
+  /* ===================== PRINT / PDF EXPORT ===================== */
+  @media print {
+    /* Kill the grain — it prints as a dark tint */
+    body::before { display: none !important; }
+
+    /* Hide all chrome that doesn't belong in the report */
+    .pill-nav,
+    .back-btn,
+    .zupp-btn,
+    .toc,
+    .margin-notes,
+    .qa-strip,
+    .qa-panel,
+    .foot { display: none !important; }
+
+    /* Full-width single-column layout */
+    .analysis { padding: 24px 32px 24px !important; }
+    .analysis-wrap { max-width: none !important; }
+    .analysis-body {
+      display: block !important;
+      margin-top: 24px !important;
+    }
+
+    /* Paper header — single column, no sidebar */
+    .paper-header {
+      grid-template-columns: 1fr !important;
+      padding: 20px 0 !important;
+    }
+    .paper-header-side { display: none !important; }
+    .paper-header h1 { font-size: 40px !important; }
+
+    /* Article body — full width, readable size */
+    .article { font-size: 14px !important; line-height: 1.6 !important; }
+    .article p { max-width: none !important; }
+    /* Drop the large drop-cap — it wastes space in PDF */
+    .article p:first-of-type::first-letter {
+      float: none !important;
+      font-size: inherit !important;
+      line-height: inherit !important;
+      padding: 0 !important;
+      color: inherit !important;
+      font-family: inherit !important;
+      font-weight: inherit !important;
+    }
+    .article h2 {
+      font-size: 28px !important;
+      page-break-after: avoid;
+    }
+    .article h3 { page-break-after: avoid; }
+    .article p,
+    .article ul,
+    .article ol { page-break-inside: avoid; }
+    .formula { page-break-inside: avoid; }
+
+    /* KaTeX display math — keep centered */
+    .katex-display { margin: 12px 0 !important; }
+
+    /* Ensure colours print (Chrome respects this) */
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+
   @media (max-width: 768px) {
     /* Pill nav — compact so nothing overflows */
     .pill-nav { padding: 0 10px; gap: 4px; }
@@ -1122,6 +1240,7 @@
     /* Analysis page */
     .analysis { padding: 100px 16px 60px; }
     .back-btn { padding: 7px 12px; font-size: 10px; }
+    .zupp-btn { padding: 7px 12px; font-size: 10px; letter-spacing: .14em; }
     .paper-header { grid-template-columns: 1fr; gap: 20px; padding: 20px 0; }
     .paper-header .meta-top { flex-wrap: wrap; gap: 10px 18px; font-size: 10px; }
     .paper-header h1 { font-size: clamp(32px, 8vw, 48px); }

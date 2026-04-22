@@ -152,7 +152,7 @@ async def summarize_stream(req: SummarizeRequest):
     )
 
 async def _get_meta(paper_id: str) -> dict:
-    is_local = bool(re.match(r'^[0-9a-f-]{36}$', paper_id))
+    is_local = bool(re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', paper_id))
     if is_local:
         from axiom.core.upload_agent import load_meta
         return load_meta(paper_id)

@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import AsyncIterator
 from axiom.core.rag_agent import retrieve, build_context, stream
 
-QA_TEMPLATE_PATH = Path("axiom/templates/prompts/qa.txt")
+QA_TEMPLATE_PATH = Path(__file__).parent.parent / "templates" / "prompts" / "qa.txt"
 _qa_template: str = ""
 
 def load_qa_template():

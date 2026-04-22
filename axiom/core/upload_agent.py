@@ -38,6 +38,12 @@ def save_meta(paper_id: str, title: str, authors: list[str]):
     path = Path(config.UPLOAD_DIR) / "local" / f"{paper_id}.json"
     path.write_text(json.dumps({"title": title, "authors": authors}))
 
+def save_error_meta(paper_id: str, error: str):
+    """Write an error flag so the frontend can surface embedding failures instead of polling forever."""
+    config = get_config()
+    path = Path(config.UPLOAD_DIR) / "local" / f"{paper_id}.error"
+    path.write_text(error)
+
 def load_meta(paper_id: str) -> dict:
     config = get_config()
     path = Path(config.UPLOAD_DIR) / "local" / f"{paper_id}.json"
@@ -47,12 +53,19 @@ def load_meta(paper_id: str) -> dict:
 
 async def embed_in_background(paper_id: str, pdf_path: Path, title: str, authors: list[str]):
     try:
+        import asyncio
         config = get_config()
-        text = pdf_agent.extract_text(pdf_path)
-        chunks = pdf_agent.chunk(text, config.MAX_CHUNK_SIZE, config.CHUNK_OVERLAP)
+        loop = asyncio.get_running_loop()
+        # Run blocking text-extraction in thread pool so we don't block the event loop
+        text = await loop.run_in_executor(None, pdf_agent.extract_text, pdf_path)
+        chunks = await loop.run_in_executor(
+            None, pdf_agent.chunk, text, config.MAX_CHUNK_SIZE, config.CHUNK_OVERLAP
+        )
         if not chunks:
             logger.error(f"No text extracted from {paper_id}")
+            save_error_meta(paper_id, "No text could be extracted from the PDF.")
             return
+        logger.info(f"Embedding {len(chunks)} chunks for {paper_id}…")
         embeddings = await embed_agent.embed_chunks(chunks)
         await vector_agent.store(
             paper_id, chunks, embeddings,
@@ -62,3 +75,4 @@ async def embed_in_background(paper_id: str, pdf_path: Path, title: str, authors
         logger.info(f"Embedded uploaded paper {paper_id}: {title}")
     except Exception as e:
         logger.error(f"Upload embedding failed for {paper_id}: {e}", exc_info=True)
+        save_error_meta(paper_id, str(e))

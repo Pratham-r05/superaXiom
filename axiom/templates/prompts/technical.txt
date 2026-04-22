@@ -6,19 +6,19 @@ Year: {YEAR}
 
 You MUST use EXACTLY these 5 section headers. Do not add, remove, rename, or reorder them:
 
-## 🎯 Motivation & Prior Work
+## Motivation & Prior Work
 What gap does this fill? Key differentiator from closest prior work?
 
-## ⚙️ Technical Approach
+## Technical Approach
 Architecture, algorithm, method in precise detail. Data flow, component interactions, design decisions.
 
-## 🛠️ Implementation Details
+## Implementation Details
 Training setup, hyperparameters, compute requirements, preprocessing, engineering tricks.
 
-## 📈 Experimental Setup & Results
+## Experimental Setup & Results
 Benchmarks, baselines, metrics. What do numbers show? Reproducibility?
 
-## 🔍 Critical Analysis
+## Critical Analysis
 Weaknesses, missing ablations, failure modes, scalability concerns. What you'd do differently.
 
 {USER_QUESTIONS_BLOCK}

@@ -6,19 +6,19 @@ Year: {YEAR}
 
 You MUST use EXACTLY these 5 section headers. Do not add, remove, rename, or reorder them:
 
-## 📐 Problem Formulation
+## Problem Formulation
 State the problem formally. Define variables, spaces, objectives. Use precise notation.
 
-## 🔣 Core Mathematical Framework
+## Core Mathematical Framework
 Key equations, loss functions, optimization objectives. Show the most important formulas.
 
-## 📎 Key Theorems & Proofs
+## Key Theorems & Proofs
 Main theoretical results. Are proofs rigorous? Key lemmas and assumptions?
 
-## 🧪 Experimental Validation
+## Experimental Validation
 Benchmark analysis. Ablations. Statistical significance. What do numbers actually show?
 
-## ⚠️ Limitations & Open Problems
+## Limitations & Open Problems
 What assumptions does the math rely on? What open theoretical questions remain?
 
 {USER_QUESTIONS_BLOCK}
