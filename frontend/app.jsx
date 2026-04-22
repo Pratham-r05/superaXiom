@@ -1883,18 +1883,7 @@ function Settings({ onNavigate }) {
 
 // ============ APP ============
 function App() {
-  const [screen, setScreen] = useState(() => {
-    try {
-      const savedScreen = localStorage.getItem('sa_screen') || 'landing';
-      if (savedScreen === 'loading') {
-        const savedSummary = readStoredJson('sa_summary_state', null);
-        return savedSummary?.text ? 'analysis' : 'query';
-      }
-      return savedScreen;
-    } catch {
-      return 'landing';
-    }
-  });
+  const [screen, setScreen] = useState('landing');
   const [summaryState, setSummaryState] = useState(() => readStoredJson('sa_summary_state', { text: '', paper: null, mode: '', length: '' }));
 
   useEffect(() => {
