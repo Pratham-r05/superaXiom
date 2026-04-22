@@ -46,7 +46,7 @@ async def search(
     query: str,
     max_results: int = 10,
     update_cache: bool = True,
-    fast_mode: bool = False,
+    fast_mode: bool = True,
 ) -> list[PaperMeta]:
     # Run SS + arXiv in parallel for better coverage
     ss_task = asyncio.create_task(

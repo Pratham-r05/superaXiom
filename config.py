@@ -21,7 +21,9 @@ class Config(BaseSettings):
     OPENROUTER_API_KEY: str = ""
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     EMBEDDING_MODEL: str = "nomic-embed-text"
-
+    EMBED_PROVIDER: str = "openrouter"
+    EMBED_API_KEY: str = ""
+    
     CHROMA_PERSIST_DIR: str = "./data/chroma_db"
     UPLOAD_DIR: str = "./data/uploads"
     TITLE_CACHE_DB: str = "./data/title_cache.db"

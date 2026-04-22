@@ -5,6 +5,8 @@ from config import get_config
 from axiom.core.search_agent import init_title_cache
 from axiom.core.summarize_agent import load_templates
 from axiom.core.qa_agent import load_qa_template
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from axiom.api.routes import search, summarize, qa, upload, config_routes, health
 
@@ -39,3 +41,9 @@ app.include_router(qa.router)
 app.include_router(upload.router)
 app.include_router(config_routes.router)
 app.include_router(health.router)
+
+app.mount("/static", StaticFiles(directory="frontend"), name="static")
+
+@app.get("/")
+async def serve_frontend():
+    return FileResponse("frontend/superaXiom.html")
