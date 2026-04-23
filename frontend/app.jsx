@@ -1742,18 +1742,27 @@ function About({ onNavigate }) {
 }
 
 // ============ SETTINGS (WIRED) ============
-function Settings({ onNavigate }) {
-  const [provider, setProvider] = useState('ollama');
-  const [model, setModel] = useState('llama3.2');
+function Settings({ onNavigate, bootstrap }) {
+  const [provider, setProvider] = useState(() => bootstrap?.config?.provider || 'ollama');
+  const [model, setModel] = useState(() => bootstrap?.config?.model || 'llama3.2');
   const [apiKey, setApiKey] = useState('');
   const [apiKeyDirty, setApiKeyDirty] = useState(false);
-  const [apiKeyStatus, setApiKeyStatus] = useState({});
+  const [apiKeyStatus, setApiKeyStatus] = useState(() => bootstrap?.config?.api_key_status || {});
   const [showKey, setShowKey] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [availableModels, setAvailableModels] = useState(null);
+  const [loading, setLoading] = useState(() => !(bootstrap?.config && bootstrap?.models));
+  const [availableModels, setAvailableModels] = useState(() => bootstrap?.models || null);
 
   useEffect(() => {
+    if (bootstrap?.config && bootstrap?.models) {
+      setProvider(bootstrap.config.provider || 'ollama');
+      setModel(bootstrap.config.model || 'llama3.2');
+      setApiKeyStatus(bootstrap.config.api_key_status || {});
+      setAvailableModels(bootstrap.models);
+      setLoading(false);
+      return;
+    }
+
     Promise.all([apiConfig(), apiAvailableModels()]).then(([config, models]) => {
       setProvider(config.provider || 'ollama');
       setModel(config.model || 'llama3.2');
@@ -1761,7 +1770,7 @@ function Settings({ onNavigate }) {
       setAvailableModels(models);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, []);
+  }, [bootstrap]);
 
   const providers = [
     { id:'ollama', label:'Ollama', ic:'🦙', sub:'Local · free · private', needsKey:false },
@@ -1944,10 +1953,25 @@ function Settings({ onNavigate }) {
 function App() {
   const [screen, setScreen] = useState('landing');
   const [summaryState, setSummaryState] = useState(() => readStoredJson('sa_summary_state', { text: '', paper: null, mode: '', length: '' }));
+  const [settingsBootstrap, setSettingsBootstrap] = useState(() => readStoredJson('sa_settings_bootstrap', null));
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [config, models] = await Promise.all([apiConfig(), apiAvailableModels()]);
+        if (cancelled) return;
+        const payload = { config, models };
+        setSettingsBootstrap(payload);
+        writeStoredJson('sa_settings_bootstrap', payload);
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     try { localStorage.setItem('sa_screen', screen); } catch {}
-    window.scrollTo({ top: 0, behavior: 'instant' });
+    window.scrollTo(0, 0);
   }, [screen]);
 
   useEffect(() => {
@@ -1977,7 +2001,7 @@ function App() {
       {screen === 'query'    && <QueryPage onNavigate={navigate} onSubmit={handleSubmit} />}
       {screen === 'loading'  && <Loading paper={summaryState.paper} mode={summaryState.mode} length={summaryState.length} question={summaryState.question || ''} onDone={handleSummaryDone} />}
       {screen === 'analysis' && <Analysis summaryText={summaryState.text} paper={summaryState.paper} mode={summaryState.mode} length={summaryState.length} onNavigate={navigate} />}
-      {screen === 'settings' && <Settings onNavigate={navigate} />}
+      {screen === 'settings' && <Settings onNavigate={navigate} bootstrap={settingsBootstrap} />}
       {screen === 'about' && <About onNavigate={navigate} />}
       {screen === 'techstack' && <TechStack onNavigate={navigate} />}
     </>
