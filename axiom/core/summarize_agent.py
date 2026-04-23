@@ -6,9 +6,21 @@ from axiom.core.rag_agent import retrieve, build_context, stream
 PROMPTS_DIR = Path(__file__).parent.parent / "templates" / "prompts"
 STRUCTURE = {
     "length": {
-        "short":  "1-2 sentences per section. Total: 150-250 words. Be extremely concise.",
-        "medium": "2-3 sentences per section. Total: 350-500 words. Clear and informative.",
-        "long":   "3-5 sentences per section. Total: 600-900 words. Be thorough."
+        "short": (
+            "Write a concise full-paper summary with all 5 required sections. "
+            "Minimum 400 words, target 400-550 words. "
+            "Cover all major components at a high level and explain the full paper end-to-end in clear language."
+        ),
+        "medium": (
+            "Write an in-depth summary with all 5 required sections. "
+            "Minimum 800 words, target 800-1000 words. "
+            "Prioritize the most important ideas, include key technical details, and include at least one core equation or formal statement when relevant to the paper."
+        ),
+        "long": (
+            "Write a detailed, structured deep dive with all 5 required sections. "
+            "Minimum 1500 words, target 1500-1800 words. "
+            "Cover every major concept, method component, result, limitation, and implication with strong structure and clarity."
+        )
     }
 }
 

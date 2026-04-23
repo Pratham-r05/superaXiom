@@ -163,7 +163,7 @@ async def test_build_prompt_substitution():
     assert "Title: Test Paper" in prompt
     assert "Authors: A, B" in prompt
     assert "Year: 2024" in prompt
-    assert "Length: 1-2 sentences" in prompt
+    assert "Length: Write a concise full-paper summary" in prompt
     assert "What is the main result?" in prompt
     assert "Context: Some context" in prompt
 
