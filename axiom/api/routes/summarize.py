@@ -164,11 +164,22 @@ async def _get_meta(paper_id: str) -> dict:
     return {"title": paper_id, "authors": [], "year": 0}
 
 
-async def _wait_for_vectors(paper_id: str, retries: int = 6, delay_s: float = 0.5) -> bool:
-    """Small grace window to smooth cross-instance storage visibility lag."""
-    for attempt in range(retries + 1):
+async def _wait_for_vectors(paper_id: str) -> bool:
+    """Wait for stable vector visibility across Modal containers.
+
+    A single positive `exists()` is not always enough immediately after prefetch
+    because Modal may route the summarize request to another container while the
+    Chroma write is still settling. Require two consecutive positive checks and
+    keep retrying for a longer window before returning NOT_READY.
+    """
+    delays = [0.5, 0.5, 1, 1, 2, 2, 3, 5, 8, 8]
+    consecutive_hits = 0
+    for delay in delays:
         if await vector_agent.exists(paper_id):
-            return True
-        if attempt < retries:
-            await asyncio.sleep(delay_s)
+            consecutive_hits += 1
+            if consecutive_hits >= 2:
+                return True
+        else:
+            consecutive_hits = 0
+        await asyncio.sleep(delay)
     return False

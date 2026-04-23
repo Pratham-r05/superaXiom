@@ -901,7 +901,9 @@ function Loading({ paper, mode, length, question, onDone }) {
           );
         };
 
-        startSummaryStream();
+        // Give the backend a moment to settle after embed-status flips to done.
+        await new Promise(r => setTimeout(r, 1200));
+        if (!cancelled) startSummaryStream();
       } catch (e) {
         if (!cancelled) setError(e.message);
       }
