@@ -19,6 +19,7 @@ class Config(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
+    SEMANTIC_SCHOLAR_API_KEY: str = ""
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     EMBEDDING_MODEL: str = "nomic-embed-text"
     EMBED_PROVIDER: str = "openrouter"

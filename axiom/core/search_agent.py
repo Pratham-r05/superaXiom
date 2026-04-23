@@ -14,6 +14,14 @@ ARXIV_API = "https://export.arxiv.org/api/query"
 FIELDS = "title,authors,year,abstract,externalIds,openAccessPdf"
 ARXIV_NS = {"atom": "http://www.w3.org/2005/Atom"}
 
+
+def _semantic_scholar_headers() -> dict:
+    config = get_config()
+    api_key = (config.SEMANTIC_SCHOLAR_API_KEY or "").strip()
+    if not api_key:
+        return {}
+    return {"x-api-key": api_key}
+
 @dataclass
 class PaperMeta:
     id: str
@@ -86,6 +94,7 @@ async def _semantic_scholar_search(
 ) -> list[PaperMeta]:
     """Search Semantic Scholar with retry on rate limit (429)."""
     max_attempts = 3 if retry_on_rate_limit else 1
+    headers = _semantic_scholar_headers()
     for attempt in range(max_attempts):
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
@@ -93,7 +102,7 @@ async def _semantic_scholar_search(
                     "query": query,
                     "limit": max_results,
                     "fields": FIELDS
-                })
+                }, headers=headers)
             if resp.status_code == 429:
                 if not retry_on_rate_limit:
                     raise Exception("Semantic Scholar rate limited (429)")
@@ -278,10 +287,12 @@ async def get_paper_meta(arxiv_id: str) -> PaperMeta | None:
         )
     # Fallback: try Semantic Scholar first, then arXiv
     try:
+        headers = _semantic_scholar_headers()
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
                 f"https://api.semanticscholar.org/graph/v1/paper/arXiv:{arxiv_id}",
-                params={"fields": FIELDS}
+                params={"fields": FIELDS},
+                headers=headers,
             )
             data = resp.json()
         pdf_url = (data.get("openAccessPdf") or {}).get("url") or f"https://arxiv.org/pdf/{arxiv_id}.pdf"
