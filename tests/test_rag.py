@@ -122,6 +122,7 @@ async def test_vector_query_returns_chunks():
     with patch("axiom.core.vector_agent.get_collection") as mock_get:
         mock_col = MagicMock()
         mock_col.count.return_value = 100
+        mock_col.get.return_value = {"ids": ["1706.03762__chunk_0", "1706.03762__chunk_1"]}
         mock_col.query.return_value = {
             "documents": [["doc1", "doc2"]],
             "metadatas": [[{"chunk_index": 0}, {"chunk_index": 1}]],
