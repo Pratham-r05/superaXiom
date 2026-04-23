@@ -519,9 +519,9 @@ function QueryPage({ onNavigate, onSubmit }) {
     { id:'intuitive', label:'Intuitive', ic:'∞' },
   ];
   const lengths = [
-    { id:'short', label:'Short · ~200w', ic:'—' },
-    { id:'medium', label:'Medium · ~450w', ic:'≡' },
-    { id:'long', label:'Long · ~800w', ic:'¶' },
+    { id:'short', label:'Tall · ~400w', ic:'—' },
+    { id:'medium', label:'Grande · ~800w', ic:'≡' },
+    { id:'long', label:'Venti · ~1500w', ic:'¶' },
   ];
 
   return (

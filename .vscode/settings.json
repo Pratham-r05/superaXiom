@@ -22,5 +22,11 @@
         "**/*.db": true,
         "**/*.sqlite*": true,
         "**/__pycache__/**": true
+    },
+    "chat.tools.terminal.autoApprove": {
+        "/^python -m py_compile axiom/api/routes/summarize\\.py axiom/core/model_router\\.py axiom/core/embed_agent\\.py modal_app\\.py$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
     }
 }
