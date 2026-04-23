@@ -57,7 +57,7 @@ async def search(
     fast_mode: bool = True,
 ) -> list[PaperMeta]:
     results = []
-    ss_failed = False
+    ss_unavailable = False
 
     # Primary source: Semantic Scholar (key-backed when configured).
     try:
@@ -70,14 +70,12 @@ async def search(
             results.extend(ss_result)
             if update_cache:
                 await _update_cache(ss_result)
-        else:
-            ss_failed = True
     except Exception as e:
-        ss_failed = True
-        logger.warning(f"Semantic Scholar search failed: {e}")
+        ss_unavailable = True
+        logger.warning(f"Semantic Scholar search failed: {e!r}")
 
     # Fallback source: arXiv only when Semantic Scholar fails or returns empty.
-    if ss_failed:
+    if ss_unavailable:
         try:
             arxiv_result = await _arxiv_search(query, max_results)
             if arxiv_result:
@@ -85,7 +83,7 @@ async def search(
                 if update_cache:
                     await _update_cache(arxiv_result)
         except Exception as e:
-            logger.warning(f"arXiv search failed: {e}")
+            logger.warning(f"arXiv search failed: {e!r}")
 
     try:
         cache_results = await _fuzzy_cache_search(query, max_results)
