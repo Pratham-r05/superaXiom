@@ -56,28 +56,36 @@ async def search(
     update_cache: bool = True,
     fast_mode: bool = True,
 ) -> list[PaperMeta]:
-    # Run SS + arXiv in parallel for better coverage
-    ss_task = asyncio.create_task(
-        _semantic_scholar_search(query, max_results, retry_on_rate_limit=not fast_mode)
-    )
-    arxiv_task = asyncio.create_task(_arxiv_search(query, max_results))
-
-    ss_result, arxiv_result = await asyncio.gather(ss_task, arxiv_task, return_exceptions=True)
-
     results = []
-    if isinstance(ss_result, list):
-        results.extend(ss_result)
-        if update_cache:
-            await _update_cache(ss_result)
-    else:
-        logger.warning(f"Semantic Scholar search failed: {ss_result}")
+    ss_failed = False
 
-    if isinstance(arxiv_result, list):
-        results.extend(arxiv_result)
-        if update_cache:
-            await _update_cache(arxiv_result)
-    else:
-        logger.warning(f"arXiv search failed: {arxiv_result}")
+    # Primary source: Semantic Scholar (key-backed when configured).
+    try:
+        ss_result = await _semantic_scholar_search(
+            query,
+            max_results,
+            retry_on_rate_limit=not fast_mode,
+        )
+        if ss_result:
+            results.extend(ss_result)
+            if update_cache:
+                await _update_cache(ss_result)
+        else:
+            ss_failed = True
+    except Exception as e:
+        ss_failed = True
+        logger.warning(f"Semantic Scholar search failed: {e}")
+
+    # Fallback source: arXiv only when Semantic Scholar fails or returns empty.
+    if ss_failed:
+        try:
+            arxiv_result = await _arxiv_search(query, max_results)
+            if arxiv_result:
+                results.extend(arxiv_result)
+                if update_cache:
+                    await _update_cache(arxiv_result)
+        except Exception as e:
+            logger.warning(f"arXiv search failed: {e}")
 
     try:
         cache_results = await _fuzzy_cache_search(query, max_results)
@@ -164,7 +172,11 @@ async def _arxiv_query(search_query: str, max_results: int) -> list[PaperMeta]:
             "sortBy": "relevance",
             "sortOrder": "descending"
         })
-    root = ET.fromstring(resp.text)
+    try:
+        root = ET.fromstring(resp.text)
+    except ET.ParseError as e:
+        logger.warning(f"arXiv XML parse failed for query '{search_query}': {e}")
+        return []
     return _parse_arxiv_entries(root)
 
 def _parse_arxiv_entries(root) -> list[PaperMeta]:
