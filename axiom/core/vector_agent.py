@@ -2,12 +2,39 @@ import asyncio
 import chromadb
 from chromadb.config import Settings
 import logging
+from pathlib import Path
 from config import get_config
 
 logger = logging.getLogger(__name__)
 
 _client = None
 _collection = None
+
+
+def _ready_marker_dir() -> Path:
+    config = get_config()
+    path = Path(config.CHROMA_PERSIST_DIR) / "ready"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def ready_marker_path(paper_id: str) -> Path:
+    return _ready_marker_dir() / f"{paper_id}.ready"
+
+
+def has_ready_marker(paper_id: str) -> bool:
+    return ready_marker_path(paper_id).exists()
+
+
+def mark_ready(paper_id: str) -> None:
+    ready_marker_path(paper_id).write_text("ready")
+
+
+def clear_ready_marker(paper_id: str) -> None:
+    path = ready_marker_path(paper_id)
+    if path.exists():
+        path.unlink()
+
 
 def get_collection():
     global _client, _collection
@@ -31,6 +58,25 @@ async def exists(paper_id: str) -> bool:
         results = col.get(where={"paper_id": paper_id}, limit=1, include=[])
         return len(results["ids"]) > 0
     return await loop.run_in_executor(None, _check)
+
+
+async def is_ready(paper_id: str) -> bool:
+    """Return True when a paper is durably ready for summarize/QA.
+
+    A ready marker is written only after a successful store. If we see a paper
+    without a marker but the vectors are already visible, bootstrap the marker so
+    old cached papers keep working.
+    """
+    if has_ready_marker(paper_id):
+        return await exists(paper_id)
+
+    if await exists(paper_id):
+        await asyncio.sleep(0.25)
+        if await exists(paper_id):
+            mark_ready(paper_id)
+            return True
+
+    return False
 
 async def store(
     paper_id: str,

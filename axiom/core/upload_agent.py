@@ -71,6 +71,7 @@ async def embed_in_background(paper_id: str, pdf_path: Path, title: str, authors
             paper_id, chunks, embeddings,
             {"title": title, "authors": json.dumps(authors), "source": "local", "year": 0}
         )
+        vector_agent.mark_ready(paper_id)
         save_meta(paper_id, title, authors)
         logger.info(f"Embedded uploaded paper {paper_id}: {title}")
     except Exception as e:

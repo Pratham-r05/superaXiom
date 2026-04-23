@@ -165,21 +165,16 @@ async def _get_meta(paper_id: str) -> dict:
 
 
 async def _wait_for_vectors(paper_id: str) -> bool:
-    """Wait for stable vector visibility across Modal containers.
+    """Wait for durable vector readiness across Modal containers.
 
-    A single positive `exists()` is not always enough immediately after prefetch
-    because Modal may route the summarize request to another container while the
-    Chroma write is still settling. Require two consecutive positive checks and
-    keep retrying for a longer window before returning NOT_READY.
+    The readiness marker is written only after a successful store. We still
+    require the vectors to be visible before returning, and we give the shared
+    volume a longer grace window so a just-finished prefetch does not leak a
+    425 back to the user.
     """
-    delays = [0.5, 0.5, 1, 1, 2, 2, 3, 5, 8, 8]
-    consecutive_hits = 0
-    for delay in delays:
-        if await vector_agent.exists(paper_id):
-            consecutive_hits += 1
-            if consecutive_hits >= 2:
-                return True
-        else:
-            consecutive_hits = 0
-        await asyncio.sleep(delay)
+    deadline = asyncio.get_running_loop().time() + 180
+    while asyncio.get_running_loop().time() < deadline:
+        if await vector_agent.is_ready(paper_id):
+            return True
+        await asyncio.sleep(1)
     return False

@@ -40,7 +40,7 @@ async def suggest(q: str, limit: int = 5):
 
 @router.post("/prefetch", status_code=202)
 async def prefetch(req: PrefetchRequest, background: BackgroundTasks):
-    already_cached = await vector_agent.exists(req.arxiv_id)
+    already_cached = await vector_agent.is_ready(req.arxiv_id)
     if already_cached:
         return {"status": "already_cached", "arxiv_id": req.arxiv_id}
     # If a task is already running for this paper, don't queue a second one.
@@ -58,7 +58,7 @@ async def prefetch(req: PrefetchRequest, background: BackgroundTasks):
 @router.get("/embed-status/{arxiv_id}")
 async def embed_status(arxiv_id: str):
     """Live status of a running embed task for a given paper."""
-    cached = await vector_agent.exists(arxiv_id)
+    cached = await vector_agent.is_ready(arxiv_id)
     if cached:
         return {"status": "done", "stage": "Indexed", "error": None,
                 "chunk_count": 0, "arxiv_id": arxiv_id}
@@ -101,6 +101,7 @@ async def _embed_paper(arxiv_id: str):
             {"title": meta.title, "authors": json.dumps(meta.authors),
              "source": "arxiv", "year": meta.year}
         )
+        vector_agent.mark_ready(arxiv_id)
         _embed_tasks[arxiv_id] = {
             "status": "done", "stage": "Indexed",
             "error": None, "chunk_count": len(chunks),
@@ -122,5 +123,5 @@ async def get_paper(arxiv_id: str):
     meta = await search_agent.get_paper_meta(arxiv_id)
     if not meta:
         raise HTTPException(404, {"error": "Paper not found", "code": "NOT_FOUND"})
-    cached = await vector_agent.exists(arxiv_id)
+    cached = await vector_agent.is_ready(arxiv_id)
     return {**meta.__dict__, "cached": cached}

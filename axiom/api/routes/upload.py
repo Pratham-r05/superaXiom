@@ -35,7 +35,7 @@ async def list_uploads():
     for pdf in upload_dir.glob("*.pdf"):
         paper_id = pdf.stem
         meta = upload_agent.load_meta(paper_id)
-        cached = await vector_agent.exists(paper_id)
+        cached = await vector_agent.is_ready(paper_id)
         # Surface embedding failures written by embed_in_background
         error_path = upload_dir / f"{paper_id}.error"
         embed_error = error_path.read_text().strip() if error_path.exists() else None
@@ -52,6 +52,7 @@ async def list_uploads():
 @router.delete("/{paper_id}")
 async def delete_upload(paper_id: str):
     await vector_agent.delete(paper_id)
+    vector_agent.clear_ready_marker(paper_id)
     config = get_config()
     upload_dir = Path(config.UPLOAD_DIR) / "local"
     for ext in [".pdf", ".json", ".error"]:

@@ -16,7 +16,7 @@ class QARequest(BaseModel):
 async def qa_stream(req: QARequest):
     if not req.question.strip():
         raise HTTPException(400, {"error": "Question cannot be empty", "code": "EMPTY_QUESTION"})
-    if not await vector_agent.exists(req.paper_id):
+    if not await vector_agent.is_ready(req.paper_id):
         raise HTTPException(425, {"error": "Paper not ready", "code": "NOT_READY"})
     meta = await _get_meta(req.paper_id)
 

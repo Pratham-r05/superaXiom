@@ -73,8 +73,8 @@ async def test_summarize_stream_success(client):
 @pytest.mark.asyncio
 async def test_summarize_stream_not_ready(client):
     """Summarizing before prefetch should return 425."""
-    with patch("axiom.api.routes.summarize.vector_agent.exists", new_callable=AsyncMock) as mock_exists:
-        mock_exists.return_value = False
+    with patch("axiom.api.routes.summarize.vector_agent.is_ready", new_callable=AsyncMock) as mock_ready:
+        mock_ready.return_value = False
         resp = await client.post("/api/summarize/stream", json={
             "paper_id": "1706.03762",
             "mode": "technical",
@@ -90,8 +90,8 @@ async def test_summarize_stream_not_ready(client):
 @pytest.mark.asyncio
 async def test_summarize_stream_invalid_mode(client):
     """Invalid mode should return 422 validation error."""
-    with patch("axiom.api.routes.summarize.vector_agent.exists", new_callable=AsyncMock) as mock_exists:
-        mock_exists.return_value = True
+    with patch("axiom.api.routes.summarize.vector_agent.is_ready", new_callable=AsyncMock) as mock_ready:
+        mock_ready.return_value = True
         resp = await client.post("/api/summarize/stream", json={
             "paper_id": "1706.03762",
             "mode": "invalid_mode",
@@ -208,8 +208,8 @@ async def test_e2e_search_prefetch_summarize(client):
         for t in ["This", " ", "paper", " ", "introduces", " ", "transformers", "."]:
             yield t
 
-    with patch("axiom.api.routes.summarize.vector_agent.exists", new_callable=AsyncMock) as mock_exists:
-        mock_exists.return_value = True
+    with patch("axiom.api.routes.summarize.vector_agent.is_ready", new_callable=AsyncMock) as mock_ready:
+        mock_ready.return_value = True
         with patch("axiom.api.routes.summarize._get_meta", new_callable=AsyncMock) as mock_meta:
             mock_meta.return_value = {"title": "Attention", "authors": ["A"], "year": 2017}
             with patch("axiom.api.routes.summarize.summarize_agent.summarize") as mock_summarize:

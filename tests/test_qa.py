@@ -91,8 +91,8 @@ async def test_qa_stream_with_history(client):
 @pytest.mark.asyncio
 async def test_qa_stream_empty_question(client):
     """Empty question should return 400."""
-    with patch("axiom.api.routes.qa.vector_agent.exists", new_callable=AsyncMock) as mock_exists:
-        mock_exists.return_value = True
+    with patch("axiom.api.routes.qa.vector_agent.is_ready", new_callable=AsyncMock) as mock_ready:
+        mock_ready.return_value = True
         resp = await client.post("/api/qa/stream", json={
             "paper_id": "1706.03762",
             "question": "   ",
@@ -108,8 +108,8 @@ async def test_qa_stream_empty_question(client):
 @pytest.mark.asyncio
 async def test_qa_stream_paper_not_ready(client):
     """Q&A on uncached paper should return 425."""
-    with patch("axiom.api.routes.qa.vector_agent.exists", new_callable=AsyncMock) as mock_exists:
-        mock_exists.return_value = False
+    with patch("axiom.api.routes.qa.vector_agent.is_ready", new_callable=AsyncMock) as mock_ready:
+        mock_ready.return_value = False
         resp = await client.post("/api/qa/stream", json={
             "paper_id": "1706.03762",
             "question": "What is attention?",
@@ -200,8 +200,8 @@ async def test_e2e_search_summarize_qa(client):
         for t in ["This", " ", "paper", " ", "proposes", " ", "transformers", "."]:
             yield t
 
-    with patch("axiom.api.routes.summarize.vector_agent.exists", new_callable=AsyncMock) as mock_exists:
-        mock_exists.return_value = True
+    with patch("axiom.api.routes.summarize.vector_agent.is_ready", new_callable=AsyncMock) as mock_ready:
+        mock_ready.return_value = True
         with patch("axiom.api.routes.summarize._get_meta", new_callable=AsyncMock) as mock_meta:
             mock_meta.return_value = {"title": "Attention", "authors": ["A"], "year": 2017}
             with patch("axiom.api.routes.summarize.summarize_agent.summarize") as mock_summarize:
@@ -219,8 +219,8 @@ async def test_e2e_search_summarize_qa(client):
         for t in ["Attention", " ", "lets", " ", "the", " ", "model", " ", "focus", "."]:
             yield t
 
-    with patch("axiom.api.routes.qa.vector_agent.exists", new_callable=AsyncMock) as mock_exists:
-        mock_exists.return_value = True
+    with patch("axiom.api.routes.qa.vector_agent.is_ready", new_callable=AsyncMock) as mock_ready:
+        mock_ready.return_value = True
         with patch("axiom.api.routes.qa._get_meta", new_callable=AsyncMock) as mock_meta:
             mock_meta.return_value = {"title": "Attention", "authors": ["A"], "year": 2017}
             with patch("axiom.api.routes.qa.qa_agent.answer") as mock_answer:
@@ -253,8 +253,8 @@ async def test_e2e_multi_turn_qa(client):
         else:
             yield "Self-attention relates every token to every other token."
 
-    with patch("axiom.api.routes.qa.vector_agent.exists", new_callable=AsyncMock) as mock_exists:
-        mock_exists.return_value = True
+    with patch("axiom.api.routes.qa.vector_agent.is_ready", new_callable=AsyncMock) as mock_ready:
+        mock_ready.return_value = True
         with patch("axiom.api.routes.qa._get_meta", new_callable=AsyncMock) as mock_meta:
             mock_meta.return_value = {"title": "T", "authors": ["A"], "year": 2024}
             with patch("axiom.api.routes.qa.qa_agent.answer") as mock_answer:
