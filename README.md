@@ -17,7 +17,7 @@
 
 ## ✨ What is Axiom?
 
-Axiom is a **production-ready AI research paper analysis system** that combines arXiv searching, intelligent summarization, and conversational Q&A. Process papers locally with no API rate limits, store embeddings forever, and get insights in seconds.
+Axiom is a **production-ready AI research paper analysis system** that combines arXiv searching, intelligent summarization, and conversational Q&A. Process papers locally with no API rate limits, store embeddings forever, & get insights in seconds.
 
 ```
      ╔══════════════════════════════════════════╗
