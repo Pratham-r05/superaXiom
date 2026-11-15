@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Literal
 from axiom.core.model_router import get_router
@@ -16,8 +16,7 @@ async def get_config():
 
 @router.post("/model")
 async def update_model(req: ModelConfigRequest):
-    get_router().update(req.provider, req.model, req.api_key)
-    return {"updated": True, "provider": req.provider, "model": req.model}
+    raise HTTPException(403, {"error": "Model configuration is locked.", "code": "CONFIG_LOCKED"})
 
 @router.get("/available-models")
 async def available_models():
