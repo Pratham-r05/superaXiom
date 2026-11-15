@@ -7,6 +7,21 @@ from config import get_config, persist_provider_api_key, persist_setting
 logger = logging.getLogger(__name__)
 Provider = Literal["ollama", "openai", "anthropic", "gemini", "openrouter"]
 
+# Reasoning models on OpenRouter (e.g. liquid/lfm-3) count their hidden
+# thinking against max_tokens. At 3000 they used the whole budget thinking
+# and returned no answer text on summary prompts.
+OPENROUTER_MAX_TOKENS = 8192
+
+
+def _empty_answer_error(model: str, finish_reason: str | None) -> ValueError:
+    hint = (
+        "It used its whole output budget on hidden reasoning. "
+        "Switch to a non-reasoning model."
+        if finish_reason == "length"
+        else "Try again or switch models."
+    )
+    return ValueError(f"{model} returned no answer text (finish_reason={finish_reason}). {hint}")
+
 class ModelRouter:
     def __init__(self):
         cfg = get_config()
@@ -141,28 +156,36 @@ class ModelRouter:
             model=self.model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
-            max_tokens=3000,
+            max_tokens=OPENROUTER_MAX_TOKENS,
             frequency_penalty=0.1,
         )
         if stream:
             raw_stream = await self._openrouter_client.chat.completions.create(**params, stream=True)
+            produced = False
+            finish_reason = None
             async for chunk in raw_stream:
                 choices = getattr(chunk, "choices", None)
                 if not choices:
                     continue
                 choice = choices[0]
+                delta = getattr(choice, "delta", None)
+                content = getattr(delta, "content", None) if delta is not None else None
+                if content:
+                    produced = True
+                    yield content
                 finish_reason = getattr(choice, "finish_reason", None)
                 if finish_reason:
                     break
-                delta = getattr(choice, "delta", None)
-                if delta is None:
-                    continue
-                content = getattr(delta, "content", None)
-                if content:
-                    yield content
+            if not produced:
+                raise _empty_answer_error(self.model, finish_reason)
+            if finish_reason == "length":
+                logger.warning("%s hit max_tokens; answer is truncated", self.model)
         else:
             resp = await self._openrouter_client.chat.completions.create(**params)
-            yield resp.choices[0].message.content
+            choice = resp.choices[0]
+            if not choice.message.content:
+                raise _empty_answer_error(self.model, choice.finish_reason)
+            yield choice.message.content
 
     async def _gemini(self, prompt: str, stream: bool) -> AsyncIterator[str]:
         if not self.api_key:
